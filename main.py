@@ -1,68 +1,22 @@
-# main.py  -  DDSM115 multi-motor control & 6-Channel PCA9685 Servo Control
+# main.py - DDSM115 Multi-Motor Control for Waveshare DDSM Driver HAT (A)
 
 import socket
 import time
 import _thread
 import json
-from machine import UART, Pin, SoftI2C
+from machine import UART, Pin
 from DNS_Server import CaptiveDNS
 
-print("DDSM115 Multi-Motor & 6-Servo PCA9685 Control - ESP32")
+print("_____________________________________________________")
+print("DDSM115 Multi-Motor Control - ESP32 HAT (A)")
 
 # ---------------------------------------------------------------------
-# 1. UART, RS485 & PCA9685 SETUP
+# 1. UART & RS485 SETUP
 # ---------------------------------------------------------------------
 
 uart = UART(2, baudrate=115200, tx=Pin(19), rx=Pin(18), timeout=50)
 de_pin = Pin(21, Pin.OUT)
 de_pin.value(0)
-
-# SoftI2C for PCA9685 (Using GPIO 22 for SCL and GPIO 23 for SDA)
-i2c = SoftI2C(scl=Pin(22), sda=Pin(23), freq=400000)
-
-class PCA9685:
-    def __init__(self, i2c_bus, address=0x40):
-        self.i2c = i2c_bus
-        self.address = address
-        self.reset()
-        self.set_pwm_freq(50) # 50Hz for standard servos
-
-    def write(self, reg, val):
-        self.i2c.writeto_mem(self.address, reg, bytes([val]))
-
-    def read(self, reg):
-        return self.i2c.readfrom_mem(self.address, reg, 1)[0]
-
-    def reset(self):
-        self.write(0x00, 0x00) # MODE1
-
-    def set_pwm_freq(self, freq):
-        osc_val = 25000000.0
-        prescale = int(round(osc_val / (4096 * freq)) - 1)
-        old_mode = self.read(0x00)
-        self.write(0x00, (old_mode & 0x7F) | 0x10) # Sleep
-        self.write(0xFE, prescale) # PRE_SCALE
-        self.write(0x00, old_mode)
-        time.sleep_us(500)
-        self.write(0x00, old_mode | 0xA1) # Auto-increment, restart
-
-    def set_servo_angle(self, channel, angle):
-        angle = max(0.0, min(180.0, angle))
-        # Map 0-180 degrees to pulse width nanoseconds (500,000ns to 2,500,000ns)
-        ns = int(500000 + (angle / 180.0) * 2000000)
-        # 50Hz period is 20,000,000 ns across 4096 steps
-        duty = int(ns * 4096 / 20000000)
-        duty = max(0, min(4095, duty))
-        reg = 6 + 4 * channel
-        buf = bytes([0, 0, duty & 0xFF, duty >> 8])
-        self.i2c.writeto_mem(self.address, reg, buf)
-
-# Initialize PCA9685 board
-pca = PCA9685(i2c)
-
-# Initialize all 6 servos to 0 degrees on startup
-for ch in range(6):
-    pca.set_servo_angle(ch, 0)
 
 bus_lock = _thread.allocate_lock()   # only one thread talks on the bus at a time
 
@@ -213,7 +167,7 @@ HTML_PAGE = """<!DOCTYPE html>
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DDSM115 & 6-Servo Control</title>
+<title>DDSM115 Motor Control</title>
 <style>
 body { font-family: -apple-system, sans-serif; background: #121212; color: #fff; text-align: center; margin: 0; padding: 20px; }
 .card { background: #1e1e1e; padding: 25px 20px; border-radius: 16px; max-width: 360px; margin: 20px auto; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
@@ -229,7 +183,6 @@ input { width: 100%; padding: 12px; box-sizing: border-box; background: #2a2a2a;
 .btn-fwd { background: #00e676; color: #000; }
 .btn-rev { background: #2979ff; color: #fff; }
 .btn-stop { background: #ff1744; color: #fff; }
-.btn-servo { background: #ab47bc; color: #fff; font-size: 0.95rem; padding: 12px; }
 .btn-id { background: #ff9100; color: #000; font-size: 1rem; padding: 12px; }
 .btn-q { background: #444; color: #fff; font-size: 1rem; padding: 12px; }
 .warn { color: #ff8a80; font-size: 0.8rem; text-align: left; margin: 6px 0; }
@@ -261,16 +214,6 @@ input { width: 100%; padding: 12px; box-sizing: border-box; background: #2a2a2a;
 </div>
 
 <div class="card">
-    <h2>Servos (0&deg; / 180&deg; Toggles)</h2>
-    <button class="btn btn-servo" onclick="toggleServo(0)" id="sbtn0">Servo 0: 0&deg;</button>
-    <button class="btn btn-servo" onclick="toggleServo(1)" id="sbtn1">Servo 1: 0&deg;</button>
-    <button class="btn btn-servo" onclick="toggleServo(2)" id="sbtn2">Servo 2: 0&deg;</button>
-    <button class="btn btn-servo" onclick="toggleServo(3)" id="sbtn3">Servo 3: 0&deg;</button>
-    <button class="btn btn-servo" onclick="toggleServo(4)" id="sbtn4">Servo 4: 0&deg;</button>
-    <button class="btn btn-servo" onclick="toggleServo(5)" id="sbtn5">Servo 5: 0&deg;</button>
-</div>
-
-<div class="card">
     <h2>Assign Motor ID</h2>
     <div class="warn">&#9888; Connect ONLY ONE motor to the bus before assigning or querying an ID. The ID can only be set once per power-up &mdash; power-cycle the motor before changing it again.</div>
     <div class="input-group">
@@ -291,17 +234,6 @@ input { width: 100%; padding: 12px; box-sizing: border-box; background: #2a2a2a;
         fetch(`/move?id=${id}&dist=${d}&speed=${s}&dir=${dir}`).then(r => r.json()).then(u);
     }
     function stopMotor() { fetch('/stop').then(r => r.json()).then(u); }
-    
-    let servoStates = [false, false, false, false, false, false];
-    function toggleServo(ch) {
-        servoStates[ch] = !servoStates[ch];
-        let targetAngle = servoStates[ch] ? 180 : 0;
-        showMsg(`Moving Servo ${ch} to ${targetAngle}&deg;...`);
-        fetch(`/servo?ch=${ch}&angle=${targetAngle}`).then(r => r.json()).then(d => {
-            document.getElementById(`sbtn${ch}`).innerText = `Servo ${d.ch}: ${d.angle}&deg;`;
-            showMsg(`Servo ${d.ch} set to ${d.angle}&deg;`);
-        });
-    }
 
     function setId() {
         let n = document.getElementById('newid').value;
@@ -397,17 +329,6 @@ while True:
                 response = state_json()
             except Exception as e:
                 response = json.dumps({"state": "ERROR", "error": str(e)})
-
-        elif path.startswith('/servo?'):
-            try:
-                params = parse_params(path)
-                ch = int(params.get('ch', '0'))
-                angle = float(params.get('angle', '0'))
-                if 0 <= ch <= 15:
-                    pca.set_servo_angle(ch, angle)
-                response = json.dumps({"ch": ch, "angle": angle})
-            except Exception as e:
-                response = json.dumps({"error": str(e)})
 
         elif path == '/stop':
             is_moving = False

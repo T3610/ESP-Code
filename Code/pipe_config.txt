@@ -1,0 +1,7 @@
+totalLength=1.0
+pipeDiameter= 2.5
+flangeDiameter=2.6
+flangeThickness=0.1
+numberOfSections=2
+sectionLength_1=0.4
+sectionLength_2=0.5

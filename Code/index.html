@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Robot & Servo Control</title>
+<style>
+body { font-family: -apple-system, sans-serif; background: #121212; color: #fff; text-align: center; margin: 0; padding: 20px; }
+.card { background: #1e1e1e; padding: 20px; border-radius: 16px; max-width: 360px; margin: 20px auto; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+h2 { margin-top: 0; color: #aaa; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 1px; }
+.status { font-size: 1.3rem; font-weight: bold; margin: 10px 0; color: #888; }
+.status.active { color: #00e676; }
+.input-group { margin: 15px 0; text-align: left; }
+label { display: block; font-size: 0.85rem; color: #aaa; margin-bottom: 5px; }
+input, select { width: 100%; padding: 12px; box-sizing: border-box; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 8px; font-size: 1rem; }
+.btn { width: 100%; padding: 15px; margin: 8px 0; border: none; border-radius: 12px; font-size: 1.1rem; font-weight: bold; cursor: pointer; }
+.btn-fwd { background: #00e676; color: #000; }
+.btn-rev { background: #2979ff; color: #fff; }
+.btn-stop { background: #ff1744; color: #fff; }
+.btn-servo { background: #ab47bc; color: #fff; }
+</style>
+</head>
+<body>
+
+<div class="card">
+    <h2>Robot Movement</h2>
+    <div id="st" class="status">STOPPED</div>
+    
+    <div class="input-group">
+        <label>Distance (Meters)</label>
+        <input type="number" id="dist" value="1.0" step="0.1" min="0.01">
+    </div>
+    <div class="input-group">
+        <label>Speed (RPM, max 330)</label>
+        <input type="number" id="speed" value="50" step="1" min="1" max="330">
+    </div>
+
+    <button class="btn btn-fwd" onclick="move(1)">MOVE FORWARD</button>
+    <button class="btn btn-rev" onclick="move(-1)">MOVE BACKWARD</button>
+    <button class="btn btn-stop" onclick="stopMotor()">STOP</button>
+</div>
+
+<div class="card">
+    <h2>Servo Control (PCA9685)</h2>
+    <div class="input-group">
+        <label>Select Servo (Channel 0 - 5)</label>
+        <select id="servo_ch">
+            <option value="0">Servo 1 (Channel 0)</option>
+            <option value="1">Servo 2 (Channel 1)</option>
+            <option value="2">Servo 3 (Channel 2)</option>
+            <option value="3">Servo 4 (Channel 3)</option>
+            <option value="4">Servo 5 (Channel 4)</option>
+            <option value="5">Servo 6 (Channel 5)</option>
+        </select>
+    </div>
+    <div class="input-group">
+        <label>Angle (0 - 180 degrees)</label>
+        <input type="number" id="servo_angle" value="90" min="0" max="180">
+    </div>
+    <button class="btn btn-servo" onclick="setServo()">SET SERVO ANGLE</button>
+</div>
+
+<script>
+    function move(dir) {
+        let d = document.getElementById('dist').value;
+        let s = document.getElementById('speed').value;
+        fetch(`/move?dist=${d}&speed=${s}&dir=${dir}`).then(r => r.json()).then(u);
+    }
+    
+    function stopMotor() { 
+        fetch('/stop').then(r => r.json()).then(u); 
+    }
+
+    function setServo() {
+        let ch = document.getElementById('servo_ch').value;
+        let angle = document.getElementById('servo_angle').value;
+        fetch(`/servo?ch=${ch}&angle=${angle}`).then(r => r.json()).then(d => {
+            console.log("Servo updated:", d);
+        });
+    }
+
+    function u() {
+        fetch('/state').then(r => r.json()).then(d => {
+            let e = document.getElementById('st');
+            e.innerText = d.state;
+            e.className = 'status' + (d.state === 'RUNNING' ? ' active' : '');
+        });
+    }
+    setInterval(u, 500);
+    u();
+</script>
+</body>
+</html>
